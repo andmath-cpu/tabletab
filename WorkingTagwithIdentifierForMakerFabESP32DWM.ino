@@ -29,6 +29,10 @@ const uint8_t PIN_RST = 27; // reset pin
 const uint8_t PIN_IRQ = 34; // irq pin
 const uint8_t PIN_SS = 4;   // spi select pin
 
+// Timer for controlling the frequency of data sending
+unsigned long lastSendTime = 0; // Stores the last time data was sent
+const unsigned long sendInterval = 750; // 500 milliseconds (half a second)
+
 void setup()
 {
     Serial.begin(115200);
@@ -42,50 +46,53 @@ void setup()
         Serial.print(".");
     }
     Serial.println("\nConnected to Wi-Fi");
-    //init the configuration
+
+    // Init the configuration
     SPI.begin(SPI_SCK, SPI_MISO, SPI_MOSI);
-    DW1000Ranging.initCommunication(PIN_RST, PIN_SS, PIN_IRQ); //Reset, CS, IRQ pin
-    //define the sketch as anchor. It will be great to dynamically change the type of module
+    DW1000Ranging.initCommunication(PIN_RST, DW_CS, PIN_IRQ); // Reset, CS, IRQ pin
     DW1000Ranging.attachNewRange(newRange);
     DW1000Ranging.attachNewDevice(newDevice);
     DW1000Ranging.attachInactiveDevice(inactiveDevice);
-    //Enable the filter to smooth the distance
-    //DW1000Ranging.useRangeFilter(true);
-    //we start the module as a tag
     DW1000Ranging.startAsTag("7D:00:22:EA:82:60:3B:9C", DW1000.MODE_LONGDATA_RANGE_LOWPOWER);
 }
 
 void loop()
 {
     DW1000Ranging.loop();
-
 }
 
 void newRange()
 {
-    // Get the range and anchorId values
-    float range = DW1000Ranging.getDistantDevice()->getRange();
-    float anchorId = DW1000Ranging.getDistantDevice()->getShortAddress();
+    unsigned long currentTime = millis(); // Get the current time
 
-    // Print to Serial Monitor for debugging
-    Serial.print("from: ");
-    Serial.print(DW1000Ranging.getDistantDevice()->getShortAddress(), HEX);
-    Serial.print("\t Range: ");
-    Serial.print(range);
-    Serial.print(" m");
-    Serial.print("\t RX power: ");
-    Serial.print(DW1000Ranging.getDistantDevice()->getRXPower());
-    Serial.println(" dBm");
+    // Check if it's time to send data
+    if (currentTime - lastSendTime >= sendInterval) {
+        lastSendTime = currentTime; // Update the last send time
 
-    // Connect to the server
-    WiFiClient client;
-    if (client.connect(host, port)) {
-        // Send the tracker ID, range, and anchorId to the server
-        client.printf("%s; %.2f; %.2f\n", trackerID, range, anchorId);
-        client.stop();  // Close the connection
-        Serial.println("Data sent: " + String(trackerID) + "; " + String(range) + "; " + String(anchorId));
-    } else {
-        Serial.println("Connection to server failed");
+        // Get the range and anchorId values
+        float range = DW1000Ranging.getDistantDevice()->getRange();
+        float anchorId = DW1000Ranging.getDistantDevice()->getShortAddress();
+
+        // Print to Serial Monitor for debugging
+        Serial.print("from: ");
+        Serial.print(DW1000Ranging.getDistantDevice()->getShortAddress(), HEX);
+        Serial.print("\t Range: ");
+        Serial.print(range);
+        Serial.print(" m");
+        Serial.print("\t RX power: ");
+        Serial.print(DW1000Ranging.getDistantDevice()->getRXPower());
+        Serial.println(" dBm");
+
+        // Connect to the server
+        WiFiClient client;
+        if (client.connect(host, port)) {
+            // Send the tracker ID, range, and anchorId to the server
+            client.printf("%s; %.2f; %.2f\n", trackerID, range, anchorId);
+            client.stop();  // Close the connection
+            Serial.println("Data sent: " + String(trackerID) + "; " + String(range) + "; " + String(anchorId));
+        } else {
+            Serial.println("Connection to server failed");
+        }
     }
 }
 
